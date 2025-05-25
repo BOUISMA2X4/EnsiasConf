@@ -1,6 +1,7 @@
 "use client";
 
 import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useToast } from "../ui/use-toast";
 import { Button } from "../ui/button";
 import { Icons } from "../ui/icons";
@@ -27,6 +28,7 @@ interface DropdownProps {
 
 export default function UserAccountDropdown({ user }: DropdownProps) {
   const { toast } = useToast();
+  const router = useRouter();
 
   const handleSignOut = async (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -40,6 +42,10 @@ export default function UserAccountDropdown({ user }: DropdownProps) {
         variant: "destructive",
       });
     }
+  };
+
+  const handleSettings = () => {
+    router.push("/settings"); // Change "/settings" to your actual route
   };
 
   return (
@@ -62,12 +68,18 @@ export default function UserAccountDropdown({ user }: DropdownProps) {
         <DropdownMenuSeparator />
 
         <DropdownMenuGroup>
-          <DropdownMenuItem disabled className="flex items-center gap-2 opacity-60">
+          <DropdownMenuItem
+            onClick={() => router.push("/profile")} // Optionnel, pour profil
+            className="flex items-center gap-2 cursor-pointer"
+          >
             <Icons.avatar width={16} height={16} />
             Profile
           </DropdownMenuItem>
 
-          <DropdownMenuItem disabled className="flex items-center gap-2 opacity-60">
+          <DropdownMenuItem
+            onClick={handleSettings}
+            className="flex items-center gap-2 cursor-pointer"
+          >
             <Icons.settings width={16} height={16} />
             Settings
           </DropdownMenuItem>

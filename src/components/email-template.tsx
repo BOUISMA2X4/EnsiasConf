@@ -28,7 +28,7 @@ export const InviteEmail: React.FC<Readonly<InviteUserEmailProps>> = ({
   recipientUsername = "zenorocha",
   senderImage,
   invitedByUsername = "bukinoshita",
-  invitedByEmail = "bukinoshita@gmail.com",
+  invitedByEmail = "ibouhamidi9@gmail.com",
   inviteLink,
 }: InviteUserEmailProps) => {
   const previewText = `Join ${invitedByUsername} on EnsiasConference`;

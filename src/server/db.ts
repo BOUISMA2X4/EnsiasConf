@@ -1,15 +1,13 @@
-import { PrismaClient } from "@prisma/client";
-import { env } from "~/env.mjs";
+// app/api/users/route.ts
+import { supabase } from "~/lib/supabase"
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+export async function GET() {
+  const { data, error } = await supabase.from("users").select("*")
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log:
-      env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-  });
+  if (error) {
+    console.error("Erreur Supabase :", error)
+    return new Response("Erreur lors de la récupération des utilisateurs", { status: 500 })
+  }
 
-if (env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+  return Response.json(data)
+}

@@ -22,9 +22,9 @@ export async function POST(req: Request) {
 
   try {
     const { error } = await resend.emails.send({
-      from: `Callsquare <${body.invitedByEmail}>`,
+      from: 'EnsiasConference <onboarding@resend.dev>', // 🔧 Domaine sandbox de test
       to: body.recipient,
-      subject: "Invitation to join call on Callsquare",
+      subject: "Invitation to join call on EnsiasConference",
       react: InviteEmail({
         recipientUsername: body.recipientUsername,
         senderImage: body.senderImage,
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
         invitedByEmail: body.invitedByEmail,
         inviteLink: body.link,
       }),
-      text: "Invitation to join call on Callsquare",
+      text: "Invitation to join call on EnsiasConference",
     });
 
     if (error) {
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     const resendError = error as ErrorResponse;
 
     if (resendError?.message) {
-      return new Response(resendError?.message, { status: 429 });
+      return new Response(resendError.message, { status: 429 });
     }
 
     if (error instanceof Error) {

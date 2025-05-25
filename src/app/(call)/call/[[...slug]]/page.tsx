@@ -1,6 +1,10 @@
 "use client";
 
-import { selectIsConnectedToRoom, useHMSActions, useHMSStore } from "@100mslive/react-sdk";
+import {
+  selectIsConnectedToRoom,
+  useHMSActions,
+  useHMSStore,
+} from "@100mslive/react-sdk";
 import Cookies from "js-cookie";
 import React from "react";
 import CallFooter from "~/components/call/call-footer";
@@ -14,17 +18,38 @@ import { useToast } from "~/components/ui/use-toast";
 export default function CallPage() {
   const params = useParams();
   const router = useRouter();
-  const isConnected = useHMSStore(selectIsConnectedToRoom);
   const hmsActions = useHMSActions();
+  const isConnected = useHMSStore(selectIsConnectedToRoom);
   const { toast } = useToast();
-  const actions = useHMSActions();
 
   const roomName = Cookies.get("room-name");
   const roomId = Cookies.get("room-id");
   const unAuthUsername = Cookies.get("username");
 
   const [isJoining, setIsJoining] = React.useState(true);
+  const [ready, setReady] = React.useState(false);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
 
+  // 🎥 Initialisation de la caméra (sans clignotement)
+  React.useEffect(() => {
+    const initCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play();
+            setReady(true);
+          };
+        }
+      } catch (error) {
+        console.error("Erreur caméra :", error);
+      }
+    };
+    initCamera();
+  }, []);
+
+  // 🚀 Connexion à l'appel
   const joinCall = React.useCallback(async () => {
     if (!roomId) {
       console.error("Room id is not defined");
@@ -34,76 +59,83 @@ export default function CallPage() {
     try {
       const roomCodeResponse = await fetch(`/api/call/code`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          callName: roomName ? roomName : params.slug,
+          callName: roomName ?? params.slug,
         }),
       });
 
-      if (roomCodeResponse?.ok) {
-        const codeResponse: RoomCodeResponse = await roomCodeResponse.json();
-        const roomCode = codeResponse.code;
-        const authToken = await hmsActions.getAuthTokenByRoomCode({ roomCode });
-        const session = await getSession();
+      if (!roomCodeResponse.ok) throw new Error("Room code fetch failed");
 
-        if (session && session.user.name) {
-          const userName = session.user.name;
-          await hmsActions.join({ userName, authToken });
-        } else if (!session && unAuthUsername) {
-          await hmsActions.join({ userName: unAuthUsername, authToken });
-        } else {
-          toast({
-            title: "Something went wrong.",
-            description: "This call cannot be joined. Please try again.",
-            variant: "destructive",
-          });
-          router.replace("/calls");
-        }
+      const { code: roomCode }: RoomCodeResponse = await roomCodeResponse.json();
+      const authToken = await hmsActions.getAuthTokenByRoomCode({ roomCode });
+      const session = await getSession();
+
+      const joinOptions = {
+        authToken,
+        settings: {
+          isAudioMuted: false,
+          isVideoMuted: false,
+        },
+      };
+
+      if (session?.user?.name) {
+        await hmsActions.join({ ...joinOptions, userName: session.user.name });
+      } else if (unAuthUsername) {
+        await hmsActions.join({ ...joinOptions, userName: unAuthUsername });
       } else {
-        throw new Error("Room code response not OK");
+        toast({
+          title: "Erreur",
+          description: "Impossible de rejoindre l'appel.",
+          variant: "destructive",
+        });
+        router.replace("/calls");
       }
     } catch (error) {
-      console.error(error);
+      console.error("Join error:", error);
       toast({
-        title: "Something went wrong.",
-        description: "This call cannot be joined. Please try again.",
+        title: "Erreur",
+        description: "Impossible de rejoindre l'appel.",
         variant: "destructive",
       });
       router.replace("/calls");
     } finally {
       setIsJoining(false);
     }
-  }, [hmsActions, toast, params.slug, router, roomName, roomId, unAuthUsername]);
+  }, [roomId, hmsActions, roomName, params.slug, unAuthUsername, router, toast]);
 
+  // 🚪 Quitter l'appel
   const leaveCall = React.useCallback(async () => {
-    const response = await fetch(`/api/call/leave`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        callName: roomName ? roomName : extractId(params.slug as string),
-        roomId: roomId,
-      }),
-    });
-
-    if (!response.ok) {
-      toast({
-        title: "Something went wrong.",
-        description: "Your call cannot be left. Please try again.",
-        variant: "destructive",
+    try {
+      const response = await fetch(`/api/call/leave`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callName: roomName ?? extractId(params.slug as string),
+          roomId,
+        }),
       });
+
+      if (!response.ok) {
+        toast({
+          title: "Erreur",
+          description: "Échec lors de la déconnexion.",
+          variant: "destructive",
+        });
+      }
+
+      await hmsActions.leave();
+    } catch (error) {
+      console.error("Leave error:", error);
     }
+  }, [roomId, roomName, params.slug, hmsActions, toast]);
 
-    await actions.leave();
-  }, [roomName, params.slug, roomId, actions, toast]);
-
+  // 🧩 Lancement automatique de l'appel
   React.useEffect(() => {
     void joinCall();
   }, [joinCall]);
 
+  // 🧼 Nettoyage à la fermeture
   React.useEffect(() => {
     window.onunload = () => {
       if (isConnected) {
@@ -113,31 +145,46 @@ export default function CallPage() {
   }, [isConnected, leaveCall]);
 
   return (
-    <section className="flex flex-col w-full h-screen overflow-hidden bg-gradient-to-tr from-[#0f0c29] via-[#302b63] to-[#24243e] text-white">
-      {/* Header Modern */}
-      <header className="p-4 sm:p-6 bg-black/30 backdrop-blur-md shadow-lg flex justify-between items-center">
-        <h1 className="text-xl font-bold tracking-wide">Live Call Room</h1>
-        <span className="text-sm text-gray-300">Powered by 100ms</span>
-      </header>
+    <section className="relative w-full h-screen overflow-hidden text-white">
+      {/* 🎥 Caméra en arrière-plan */}
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        className={`fixed top-0 left-0 w-screen h-screen object-cover z-0 transition-opacity duration-500 ${
+          ready ? "opacity-100" : "opacity-0"
+        }`}
+      />
 
-      <div className="flex-1 flex items-center justify-center relative p-6">
-        {/* Loading */}
-        {isJoining && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 rounded-xl">
-            <div className="animate-spin h-12 w-12 rounded-full border-t-4 border-b-4 border-purple-500"></div>
+      {/* 📦 Contenu de l'appel */}
+      <div className="absolute inset-0 flex flex-col z-10">
+        {/* 🔝 En-tête */}
+        <header className="p-4 sm:p-6 bg-black/30 backdrop-blur-md shadow-md flex justify-between items-center">
+          <h1 className="text-xl font-bold">Salle de conférence</h1>
+          <span className="text-sm text-gray-300">Propulsé par 100ms</span>
+        </header>
+
+        {/* 📞 Zone principale */}
+        <main className="flex-1 flex items-center justify-center relative p-4 sm:p-6">
+          {/* ⏳ Chargement */}
+          {isJoining && (
+            <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
+              <div className="h-12 w-12 border-4 border-t-transparent border-purple-500 rounded-full animate-spin"></div>
+            </div>
+          )}
+
+          {/* 🧑‍💻 Composant de conférence */}
+          <div className="w-full h-full max-w-7xl rounded-2xl bg-black/30 border border-purple-600 shadow-2xl overflow-hidden">
+            <Conference />
           </div>
-        )}
+        </main>
 
-        {/* Zone principale de conférence */}
-        <div className="w-full h-full max-w-7xl rounded-2xl bg-black/30 border border-purple-700 shadow-2xl overflow-hidden">
-          <Conference />
-        </div>
+        {/* 🔚 Pied de page */}
+        <footer className="bg-black/20 backdrop-blur-md border-t border-purple-700 px-4 py-3 shadow-md">
+          <CallFooter />
+        </footer>
       </div>
-
-      {/* Footer Modern */}
-      <footer className="bg-black/20 backdrop-blur-md border-t border-purple-700 px-4 py-3 shadow-md">
-        <CallFooter />
-      </footer>
     </section>
   );
 }
